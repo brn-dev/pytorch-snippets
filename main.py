@@ -26,7 +26,7 @@ class TestDS(Dataset):
 
 def main():
     device = torch.device('cuda:0')
-    in_features = 100
+    in_features = 10000
     hidden_features = in_features // 10
 
     train_ds = TestDS(num_features=in_features, size=1000)

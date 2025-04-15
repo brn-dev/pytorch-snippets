@@ -18,7 +18,7 @@ def evaluate(
 ):
     model.eval()
 
-    pbar = tqdm(val_loader, disable=disable_tqdm)
+    pbar = tqdm(val_loader, disable=disable_tqdm, delay=0.01)
 
     if not tqdm_header:
         tqdm_header = 'Train'
@@ -50,7 +50,7 @@ def train_epoch(
     device: torch.device = torch.device(device)
     model.train()
 
-    pbar = tqdm(train_loader, disable=disable_tqdm)
+    pbar = tqdm(train_loader, disable=disable_tqdm, delay=0.1)
     if not tqdm_header:
         tqdm_header = 'Train'
     pbar.set_description(tqdm_header, refresh=False)
@@ -97,6 +97,11 @@ def train(
     run_id = datetime.now().strftime('%Y%m%d-%H%S')
     run_path = Path(f'./models/{run_id}')
     run_path.mkdir(parents=True)
+
+    print(f'\nRun {run_id}: Training model with '
+          f'{sum(p.numel() for p in model.parameters() if p.requires_grad)} parameters '
+          f'for {num_epochs} epochs with learning rate {optimizer.param_groups[0]["lr"]:.2e} '
+          f'on device {device} \n', flush=True)
 
     best_val_loss: float = 1e6
 
