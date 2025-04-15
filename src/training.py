@@ -32,7 +32,7 @@ def evaluate(
             loss = criterion(logits, y)
             losses.append(loss.item())
 
-            pbar.set_description(f'{tqdm_header} - batch_loss = {loss:8.4f}')
+            pbar.set_description(f'{tqdm_header} - batch_loss = {loss:7.4f}', refresh=False)
 
     return losses
 
@@ -43,6 +43,7 @@ def train_epoch(
         criterion: nn.Module,
         train_loader: DataLoader,
         device: torch.device | str | int,
+        clip_grad_norm: float | None = None,
         tqdm_header: str | None = None,
         disable_tqdm=False,
 ):
@@ -50,12 +51,12 @@ def train_epoch(
     model.train()
 
     pbar = tqdm(train_loader, disable=disable_tqdm)
-
     if not tqdm_header:
         tqdm_header = 'Train'
     pbar.set_description(tqdm_header, refresh=False)
 
     losses: list[float] = []
+    grad_norms: list[float] = []
     for x, y in pbar:
         x, y = x.to(device), y.to(device)
         logits = model(x)
@@ -64,11 +65,19 @@ def train_epoch(
 
         optimizer.zero_grad()
         loss.backward()
+
+        info = f'batch_loss = {loss:7.4f}'
+
+        if clip_grad_norm:
+            grad_norm = nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm).item()
+            grad_norms.append(grad_norm)
+            info += f', {grad_norm = :7.4f} (clip={clip_grad_norm:.2f})'
+
         optimizer.step()
 
-        pbar.set_description(f'{tqdm_header} - batch_loss = {loss:8.4f}')
+        pbar.set_description(f'{tqdm_header} - {info}', refresh=False)
 
-    return losses
+    return losses, grad_norms if clip_grad_norm else None
 
 
 def train(
@@ -79,25 +88,26 @@ def train(
         train_loader: DataLoader,
         val_loader: DataLoader | None,
         device: torch.device | str | int,
+        clip_grad_norm: float | None = None,
         scheduler: optim.lr_scheduler.LRScheduler = None,
 ):
-
     all_train_losses: list[list[float]] = []
     all_val_losses: list[list[float]] = []
 
-    run_id = datetime.now().strftime("%Y%m%d-%H%S")
+    run_id = datetime.now().strftime('%Y%m%d-%H%S')
     run_path = Path(f'./models/{run_id}')
     run_path.mkdir(parents=True)
 
     best_val_loss: float = 1e6
 
     for epoch in range(1, num_epochs + 1):
-        epoch_train_losses = train_epoch(
+        epoch_train_losses, epoch_grad_norms = train_epoch(
             model=model,
             optimizer=optimizer,
             criterion=criterion,
             train_loader=train_loader,
             device=device,
+            clip_grad_norm=clip_grad_norm,
             tqdm_header=f'Epoch {epoch:>3}/{num_epochs:>3} - Train'
         )
         epoch_val_losses = evaluate(
@@ -110,11 +120,16 @@ def train(
         all_train_losses.append(epoch_train_losses)
         all_val_losses.append(epoch_val_losses)
 
-        print(f"\nEpoch {epoch:>4}:    "
-              f"train_loss = {np.mean(epoch_train_losses):8.4f},     "
-              f"val_loss = {np.mean(epoch_val_losses):8.4f}")
-
         epoch_val_loss = np.mean(epoch_val_losses)
+
+        info = (f'\nEpoch {epoch:>4}:    '
+                f'train_loss = {np.mean(epoch_train_losses):7.4f} ± {np.std(epoch_train_losses):7.4f},     '
+                f'val_loss = {epoch_val_loss:7.4f} ± {np.std(epoch_val_losses):7.4f}')
+        if clip_grad_norm:
+            info += (f',     grad_norm = {np.mean(epoch_grad_norms):7.4f} ± {np.std(epoch_grad_norms):7.4f}  '
+                     f'(max={np.max(epoch_grad_norms):.4f})')
+        print(info)
+
         if epoch_val_loss <= best_val_loss:
             best_val_loss = epoch_val_loss
 

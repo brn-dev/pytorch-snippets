@@ -21,8 +21,13 @@ class GlobalMaxPooling2d(nn.Module):
         return x.amax(dim=(-2, -1), keepdim=self.keepdims)
 
 
-# Depthwise Separable Convolution
-# https://arxiv.org/abs/1610.02357
+
+"""
+Depthwise Separable Convolution
+https://arxiv.org/abs/1610.02357
+Splits convolution into per-channel convolution followed by 1×1 channel mixing.
+Significantly reduces the number of parameters compared to conventional convolutions.
+"""
 class DSConv2d(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int, padding: int | str = 0):
         super().__init__()
@@ -40,7 +45,11 @@ class DSConv2d(nn.Module):
         return self.block(x)
 
 
-# https://arxiv.org/abs/1709.01507
+"""
+Squeeze and Excitation
+https://arxiv.org/abs/1709.01507
+Uses global information to scale each feature channel value.
+"""
 class SqueezeAndExcite2d(nn.Module):
     def __init__(self, in_out_channels: int, hidden_channels: int):
         super().__init__()

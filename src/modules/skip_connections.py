@@ -5,13 +5,16 @@ from torch import nn
 
 class ResidualConnection(nn.Module):
 
-    def __init__(self, mod: nn.Module, scaling_factor: float = 1/np.sqrt(2)):
+    def __init__(self, mod: nn.Module, shortcut_mod: nn.Module = None, scaling_factor: float = 1/np.sqrt(2)):
         super().__init__()
         self.mod = mod
+        self.shortcut_mod = shortcut_mod or nn.Identity()
+
         self.scaling_factor = scaling_factor
 
     def forward(self, x: torch.Tensor):
-        return self.scaling_factor * (x + self.mod(x))
+        # if Var(x) = Var(mod(x)) = 1 then scaling_factor needs to be 1/sqrt(2) such that the sum has variance 1
+        return self.scaling_factor * (self.shortcut_mod(x) + self.mod(x))
 
 
 class DenseConnection(nn.Module):

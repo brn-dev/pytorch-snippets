@@ -3,8 +3,7 @@ import torch
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader
 
-from src.debug_modules import PrintShape, PrintMoments
-from src.skip_connections import ResidualConnection, DenseConnection
+from src.modules.skip_connections import ResidualConnection
 from src.training import train
 
 
@@ -27,26 +26,39 @@ class TestDS(Dataset):
 
 def main():
     device = torch.device('cuda:0')
-    num_features = 10
+    in_features = 100
+    hidden_features = in_features // 10
 
-    train_ds = TestDS(num_features=num_features, size=1000)
-    val_ds = TestDS(num_features=num_features, size=1000)
+    train_ds = TestDS(num_features=in_features, size=1000)
+    val_ds = TestDS(num_features=in_features, size=1000)
 
     train_loader = DataLoader(train_ds, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=32, shuffle=False)
 
-    model = nn.Linear(num_features, 1).to(device)
+    model = nn.Sequential(
+        nn.Linear(in_features, hidden_features),
+        ResidualConnection(
+            nn.Sequential(
+                nn.ReLU(),
+                nn.Linear(hidden_features, 1)
+            ),
+            nn.Sequential(
+                nn.Linear(hidden_features, 1)
+            )
+        ),
+    ).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-2)
     criterion = nn.MSELoss()
 
     train(
-        num_epochs=10,
+        num_epochs=50,
         model=model,
         optimizer=optimizer,
         criterion=criterion,
         train_loader=train_loader,
         val_loader=val_loader,
-        device=device
+        device=device,
+        clip_grad_norm=50,
     )
 
 
