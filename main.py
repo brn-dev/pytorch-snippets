@@ -57,8 +57,7 @@ def main():
         WnBLogLayerStats('out')
     ).to(device)
     wnb_log_modules(model, {'0': 'in_layer', '1': 'res'})
-    with torch.no_grad():
-        init_weights_(model)
+    init_weights_(model)
     optimizer = optim.Adam(model.parameters(), lr=1e-2)
     criterion = nn.MSELoss()
 
