@@ -8,7 +8,7 @@ from src.model_analysis import check_output_moments
 from src.modules.debug_modules import PrintMoments
 from src.modules.skip_connections import ResidualConnection
 from src.training import train
-from src.wandb_utils import register_wandb_module_hooks, WnBLogLayerStats
+from src.wandb_utils import wnb_log_module, WnBLogLayerStats, wnb_log_modules
 from src.weight_init import init_weights_
 
 
@@ -48,10 +48,7 @@ def main():
         ResidualConnection(
             nn.Sequential(
                 nn.ReLU(),
-                register_wandb_module_hooks(
-                    nn.Linear(hidden_features, out_features),
-                    'after relu', param_names=['weight', 'bias']
-                )
+                nn.Linear(hidden_features, out_features),
             ),
             nn.Sequential(
                 nn.Linear(hidden_features, out_features)
@@ -59,6 +56,7 @@ def main():
         ),
         WnBLogLayerStats('out')
     ).to(device)
+    wnb_log_modules(model, {'0': 'in_layer', '1': 'res'})
     with torch.no_grad():
         init_weights_(model)
     optimizer = optim.Adam(model.parameters(), lr=1e-2)
@@ -79,9 +77,9 @@ def main():
         val_loader=val_loader,
         device=device,
         clip_grad_norm=50,
-        # wandb_init_cfg={
-        #     'project': 'snippets-test'
-        # }
+        wandb_init_cfg={
+            'project': 'snippets-test',
+        }
     )
 
 
