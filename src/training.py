@@ -1,8 +1,12 @@
+import string
 from datetime import datetime
 from pathlib import Path
+import random
+from typing import Any
 
 import numpy as np
 import torch
+import wandb
 from torch import nn, optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -30,9 +34,11 @@ def evaluate(
             x, y = x.to(device), y.to(device)
             logits = model(x)
             loss = criterion(logits, y)
-            losses.append(loss.item())
 
-            pbar.set_description(f'{tqdm_header} - batch_loss = {loss:7.4f}', refresh=False)
+            loss_item = loss.item()
+            losses.append(loss_item)
+            wandb.log({'eval/loss': loss_item})
+            pbar.set_description(f'{tqdm_header} - batch_loss = {loss_item:7.4f}', refresh=False)
 
     return losses
 
@@ -45,7 +51,7 @@ def train_epoch(
         device: torch.device | str | int,
         clip_grad_norm: float | None = None,
         tqdm_header: str | None = None,
-        disable_tqdm=False,
+        disable_tqdm=False
 ):
     device: torch.device = torch.device(device)
     model.train()
@@ -61,21 +67,22 @@ def train_epoch(
         x, y = x.to(device), y.to(device)
         logits = model(x)
         loss = criterion(logits, y)
-        losses.append(loss.item())
 
         optimizer.zero_grad()
         loss.backward()
 
-        info = f'batch_loss = {loss:7.4f}'
-
+        grad_info = ''
         if clip_grad_norm:
             grad_norm = nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm).item()
             grad_norms.append(grad_norm)
-            info += f', {grad_norm = :7.4f} (clip={clip_grad_norm:.2f})'
+            grad_info = f', {grad_norm = :7.4f} (clip={clip_grad_norm:.2f})'
 
         optimizer.step()
 
-        pbar.set_description(f'{tqdm_header} - {info}', refresh=False)
+        loss_item = loss.item()
+        losses.append(loss_item)
+        wandb.log({'train/loss': loss_item})
+        pbar.set_description(f'{tqdm_header} - batch_loss = {loss_item:7.4f}' + grad_info, refresh=False)
 
     return losses, grad_norms if clip_grad_norm else None
 
@@ -90,13 +97,26 @@ def train(
         device: torch.device | str | int,
         clip_grad_norm: float | None = None,
         scheduler: optim.lr_scheduler.LRScheduler = None,
+        wandb_init_cfg: dict[str, Any] | None = None
 ):
+    def get_summary_stats(values: list[float]) -> str:
+        return (f'{np.mean(values):7.4f} ± {np.std(values):7.4f}'
+                f'    (min = {np.min(values):7.4f},  max = {np.max(values):7.4f})')
+
     all_train_losses: list[list[float]] = []
     all_val_losses: list[list[float]] = []
 
-    run_id = datetime.now().strftime('%Y%m%d-%H%S')
+    # ID of format 'YYYY-mm-dd_HH-MM-SS~R4nD0M'
+    run_id = (datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+              + '~' + ''.join(random.choices(string.ascii_letters + string.digits, k=6)))
     run_path = Path(f'./models/{run_id}')
     run_path.mkdir(parents=True)
+
+    if wandb_init_cfg:
+        wandb.init(id=run_id, **wandb_init_cfg)
+    else:
+        print('wandb disabled')
+        wandb.init(mode='disabled')
 
     print(f'\nRun {run_id}: Training model with '
           f'{sum(p.numel() for p in model.parameters() if p.requires_grad)} parameters '
@@ -125,21 +145,21 @@ def train(
         all_train_losses.append(epoch_train_losses)
         all_val_losses.append(epoch_val_losses)
 
-        epoch_val_loss = np.mean(epoch_val_losses)
-
-        info = (f'\nEpoch {epoch:>4}:    '
-                f'train_loss = {np.mean(epoch_train_losses):7.4f} ± {np.std(epoch_train_losses):7.4f},     '
-                f'val_loss = {epoch_val_loss:7.4f} ± {np.std(epoch_val_losses):7.4f}')
+        info = (
+            f'\n======    Epoch {epoch:>4}    ======\n'
+            f'train_loss = {get_summary_stats(epoch_train_losses)}\n'
+            f'val_loss   = {get_summary_stats(epoch_val_losses)}\n'
+        )
         if clip_grad_norm:
-            info += (f',     grad_norm = {np.mean(epoch_grad_norms):7.4f} ± {np.std(epoch_grad_norms):7.4f}  '
-                     f'(max={np.max(epoch_grad_norms):.4f})')
+            info += f'grad_norm  = {get_summary_stats(epoch_grad_norms)}  [clip={clip_grad_norm}]\n'
         print(info)
 
+        epoch_val_loss = np.mean(epoch_val_losses)
         if epoch_val_loss <= best_val_loss:
             best_val_loss = epoch_val_loss
 
             model_path = run_path.joinpath('best.state-dict.pth')
-            torch.save(model.state_dict(),  model_path)
+            torch.save(model.state_dict(), model_path)
 
             print(f'Saved best model at {model_path} with loss = {best_val_loss:7.4f}')
 

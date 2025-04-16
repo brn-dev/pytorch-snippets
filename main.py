@@ -1,10 +1,15 @@
 import numpy as np
 import torch
+import wandb
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader
 
+from src.model_analysis import check_output_moments
+from src.modules.debug_modules import PrintMoments
 from src.modules.skip_connections import ResidualConnection
 from src.training import train
+from src.wandb_utils import register_wandb_module_hooks, WnBLogLayerStats
+from src.weight_init import init_weights_
 
 
 class TestDS(Dataset):
@@ -25,9 +30,12 @@ class TestDS(Dataset):
 
 
 def main():
+    # wandb.init(project='snippets-test', )
+
     device = torch.device('cuda:0')
-    in_features = 10000
-    hidden_features = in_features // 10
+    in_features = 100
+    hidden_features = in_features
+    out_features = 1
 
     train_ds = TestDS(num_features=in_features, size=1000)
     val_ds = TestDS(num_features=in_features, size=1000)
@@ -40,15 +48,27 @@ def main():
         ResidualConnection(
             nn.Sequential(
                 nn.ReLU(),
-                nn.Linear(hidden_features, 1)
+                register_wandb_module_hooks(
+                    nn.Linear(hidden_features, out_features),
+                    'after relu', param_names=['weight', 'bias']
+                )
             ),
             nn.Sequential(
-                nn.Linear(hidden_features, 1)
+                nn.Linear(hidden_features, out_features)
             )
         ),
+        WnBLogLayerStats('out')
     ).to(device)
+    with torch.no_grad():
+        init_weights_(model)
     optimizer = optim.Adam(model.parameters(), lr=1e-2)
     criterion = nn.MSELoss()
+
+    # check_output_moments(model, (in_features,), 64, device)
+
+    # x = torch.tensor(np.random.normal(size=(32, in_features)), dtype=torch.float32).to(device)
+    # print(torch.var(x))
+    # print(torch.var(model(x)))
 
     train(
         num_epochs=50,
@@ -59,6 +79,9 @@ def main():
         val_loader=val_loader,
         device=device,
         clip_grad_norm=50,
+        # wandb_init_cfg={
+        #     'project': 'snippets-test'
+        # }
     )
 
 

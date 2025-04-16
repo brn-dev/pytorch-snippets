@@ -22,13 +22,13 @@ class PrintMoments(nn.Module):
     def forward(self, x: torch.Tensor):
         x_flat = x.flatten(1)
 
-        mean = x_flat.mean(dim=1)
+        mean = x_flat.mean(dim=1, keepdim=True)
 
-        variance = ((x_flat - mean.unsqueeze(1)) ** 2).mean(dim=1)
+        variance = torch.var(x_flat - mean, dim=1)
         sigma = variance.sqrt()
 
-        skewness = ((x_flat - mean.unsqueeze(1)) ** 3).mean(dim=1) / (sigma ** 3 + 1e-8)
-        kurtosis = ((x_flat - mean.unsqueeze(1)) ** 4).mean(dim=1) / (sigma ** 4 + 1e-8)
+        skewness = ((x_flat - mean) ** 3).mean(dim=1) / (sigma ** 3 + 1e-8)
+        kurtosis = ((x_flat - mean) ** 4).mean(dim=1) / (sigma ** 4 + 1e-8)
 
         if self.name:
             print(f'{self.name}: ')
