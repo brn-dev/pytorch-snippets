@@ -11,6 +11,6 @@ class Stopwatch:
 
     def reset(self):
         time_passed = self.time_passed()
-        self.last_time += time_passed
+        self.last_time = time.time()
         return time_passed
 
